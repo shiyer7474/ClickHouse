@@ -525,6 +525,8 @@ ParquetBlockInputFormat::~ParquetBlockInputFormat()
         io_pool->wait();
 }
 
+std::mutex ParquetFileMetaDataCache::mutex;
+
 ParquetFileMetaDataCache::ParquetFileMetaDataCache(UInt64 max_cache_entries)
     : CacheBase(max_cache_entries) {}
 
@@ -532,7 +534,10 @@ ParquetFileMetaDataCache *  ParquetFileMetaDataCache::instance(UInt64 max_cache_
 {
     static ParquetFileMetaDataCache * instance = nullptr;
     if (!instance)
+    {
+        std::lock_guard lock(mutex);
         instance = new ParquetFileMetaDataCache(max_cache_entries);
+    }
     return instance;
 }
 

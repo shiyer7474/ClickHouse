@@ -371,6 +371,7 @@ public:
 
 private:
     ParquetFileMetaDataCache(UInt64 max_cache_entries);
+    static std::mutex mutex;
 };
 
 }
