@@ -130,11 +130,19 @@ std::shared_ptr<StorageObjectStorageSource::IIterator> StorageObjectStorageSourc
     std::unique_ptr<IIterator> iterator;
     if (configuration->isPathWithGlobs())
     {
-        /// Iterate through disclosed globs and make a source for each file
-        iterator = std::make_unique<GlobIterator>(
-            object_storage, configuration, predicate, virtual_columns,
-            local_context, is_archive ? nullptr : read_keys, query_settings.list_object_keys_size,
-            query_settings.throw_on_zero_files_match, file_progress_callback);
+        if (configuration->supportsGlobResultCaching(local_context))
+        {
+            auto cached_object_list = configuration->getValidCachedObjectList(local_context);
+            if (cached_object_list)
+                iterator = std::make_unique<SimpleCachedObjectListIterator>(object_storage, configuration,
+                    cached_object_list.value());
+        }
+        if (!iterator)
+            /// Iterate through disclosed globs and make a source for each file
+            iterator = std::make_unique<GlobIterator>(
+                object_storage, configuration, predicate, virtual_columns,
+                local_context, is_archive ? nullptr : read_keys, query_settings.list_object_keys_size,
+                query_settings.throw_on_zero_files_match, file_progress_callback);
     }
     else
     {
@@ -301,6 +309,7 @@ StorageObjectStorageSource::ReaderHolder StorageObjectStorageSource::createReade
     ObjectInfoPtr object_info;
     auto query_settings = configuration->getQuerySettings(context_);
 
+
     do
     {
         object_info = file_iterator->next(processor);
@@ -388,6 +397,9 @@ StorageObjectStorageSource::ReaderHolder StorageObjectStorageSource::createReade
 
         if (need_only_count)
             input_format->needOnlyCount();
+
+        if (object_info->getPath().length())
+            input_format->setStorageRelatedUniqueKey(context_->getSettingsRef(), object_info->getPath() + ":" + object_info->metadata->etag);
 
         builder.init(Pipe(input_format));
 
@@ -578,6 +590,7 @@ StorageObjectStorageSource::GlobIterator::GlobIterator(
         const auto key_prefix = configuration->getPathWithoutGlobs();
         object_storage_iterator = object_storage->iterate(key_prefix, list_object_keys_size);
 
+
         matcher = std::make_unique<re2::RE2>(makeRegexpPatternFromGlobs(key_with_globs));
         if (!matcher->ok())
         {
@@ -590,6 +603,8 @@ StorageObjectStorageSource::GlobIterator::GlobIterator(
             VirtualColumnUtils::buildSetsForDAG(*filter_dag, getContext());
             filter_expr = std::make_shared<ExpressionActions>(std::move(*filter_dag));
         }
+        save_glob_results = configuration->supportsGlobResultCaching(getContext());
+
     }
     else
     {
@@ -624,8 +639,24 @@ StorageObjectStorage::ObjectInfoPtr StorageObjectStorageSource::GlobIterator::ne
                         configuration->getPath());
     }
     first_iteration = false;
+    if (save_glob_results)
+    {
+        if (object_info)
+        {
+            object_list.push_back(object_info);
+        }
+        else
+        {
+            if (!copied_saved_glob_results)
+            {
+                configuration->setCachedObjectList(object_list);
+                copied_saved_glob_results = true;
+            }
+        }
+    }
     return object_info;
 }
+
 
 StorageObjectStorage::ObjectInfoPtr StorageObjectStorageSource::GlobIterator::nextImplUnlocked(size_t /* processor */)
 {
@@ -922,6 +953,23 @@ StorageObjectStorageSource::ArchiveIterator::nextImpl(size_t processor)
 size_t StorageObjectStorageSource::ArchiveIterator::estimatedKeysCount()
 {
     return archives_iterator->estimatedKeysCount();
+}
+
+StorageObjectStorageSource::SimpleCachedObjectListIterator::SimpleCachedObjectListIterator(
+        ObjectStoragePtr object_storage_,
+        ConfigurationPtr configuration_,
+        ObjectInfos & object_list_)
+    : IIterator("SimpleCachedObjectListIterator"), object_storage(object_storage_), configuration(configuration_), object_list(std::move(object_list_))
+{
+}
+
+StorageObjectStorageSource::ObjectInfoPtr StorageObjectStorageSource::SimpleCachedObjectListIterator::nextImpl(size_t /* processor */)
+{
+    size_t current_index = index.fetch_add(1, std::memory_order_relaxed);
+    if (current_index >= object_list.size())
+        return {};
+
+    return object_list[current_index];
 }
 
 }

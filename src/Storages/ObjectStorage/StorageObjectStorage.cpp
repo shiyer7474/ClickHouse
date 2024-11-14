@@ -31,6 +31,8 @@ namespace Setting
     extern const SettingsMaxThreads max_threads;
     extern const SettingsBool optimize_count_from_files;
     extern const SettingsBool use_hive_partitioning;
+    extern const SettingsBool cache_object_storage_list_results;
+    extern const SettingsInt64 cache_object_storage_list_results_expire_seconds;
 }
 
 namespace ErrorCodes
@@ -88,9 +90,11 @@ StorageObjectStorage::StorageObjectStorage(
 {
     ColumnsDescription columns{columns_};
 
+
     std::string sample_path;
     resolveSchemaAndFormat(columns, configuration->format, object_storage, configuration, format_settings, sample_path, context);
     configuration->check(context);
+    LOG_TRACE(log, "StorageObjectStorage created for : {} {}", table_id_.getFullTableName(), sample_path);
 
     StorageInMemoryMetadata metadata;
     metadata.setColumns(columns);
@@ -239,6 +243,7 @@ private:
         iterator_wrapper = StorageObjectStorageSource::createFileIterator(
             configuration, configuration->getQuerySettings(context), object_storage, distributed_processing,
             context, predicate, virtual_columns, nullptr, context->getFileProgressCallback());
+
     }
 };
 }
@@ -558,5 +563,27 @@ void StorageObjectStorage::Configuration::assertInitialized() const
     {
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Configuration was not initialized before usage");
     }
+}
+
+bool StorageObjectStorage::Configuration::supportsGlobResultCaching(ContextPtr context) const
+{
+    return context->getSettingsRef()[Setting::cache_object_storage_list_results];
+}
+
+std::optional<StorageObjectStorage::ObjectInfos> StorageObjectStorage::Configuration::getValidCachedObjectList(ContextPtr context) const
+{
+    if (cached_object_list.size())
+    {
+        auto current_time = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        if ((current_time - last_refresh_time) < context->getSettingsRef()[Setting::cache_object_storage_list_results_expire_seconds])
+            return cached_object_list;
+    }
+    return {};
+}
+
+void StorageObjectStorage::Configuration::setCachedObjectList(ObjectInfos & object_list)
+{
+    last_refresh_time = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    cached_object_list = std::move(object_list);
 }
 }

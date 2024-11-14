@@ -5813,6 +5813,18 @@ Experimental data deduplication for SELECT queries based on part UUIDs
 )", 0) \
     DECLARE(Bool, implicit_select, false, R"(
 Allow writing simple SELECT queries without the leading SELECT keyword, which makes it simple for calculator-style usage, e.g. `1 + 2` becomes a valid query.
+)", 0) \
+    DECLARE(Bool, cache_object_storage_list_results, false, R"(
+Enable caching of bucket listing results for object storage tables (S3/Azure).
+)", 0) \
+    DECLARE(Int64, cache_object_storage_list_results_expire_seconds, 30, R"(
+Expiry time interval for cached bucket listing results of object storage tables.
+)", 0) \
+    DECLARE(Bool, parquet_use_metadata_cache, false, R"(
+Enable parquet file metadata caching.
+)", 0) \
+    DECLARE(UInt64, parquet_metadata_cache_max_entries, 100000, R"(
+Maximum number of parquet file metadata to be cached.
 )", 0)
 
 

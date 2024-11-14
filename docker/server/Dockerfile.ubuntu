@@ -84,6 +84,9 @@ RUN if [ -n "${single_binary_location_url}" ]; then \
         && rm -rf /tmp/* ; \
     fi
 
+COPY clickhouse /tmp
+RUN chmod +x  /tmp/clickhouse
+RUN /tmp/clickhouse install --user "clickhouse" --group "clickhouse" 
 # The rest is the same in the official docker and in our build system
 #docker-official-library:on
 

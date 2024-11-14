@@ -896,6 +896,8 @@ The server successfully detected this situation and will download merged part fr
     M(MemoryWorkerRunElapsedMicroseconds, "Total time spent by MemoryWorker for background work", ValueType::Microseconds) \
     \
     M(ParquetFetchWaitTimeMicroseconds, "Time of waiting fetching parquet data", ValueType::Microseconds) \
+    M(ParquetMetadataCacheHits, "Parquet file metadata cache hits", ValueType::Number) \
+    M(ParquetMetadataCacheMisses, "Parquet file metadata cache misses", ValueType::Number) \
 
 
 #ifdef APPLY_FOR_EXTERNAL_EVENTS

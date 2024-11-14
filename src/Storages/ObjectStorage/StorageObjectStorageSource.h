@@ -29,6 +29,7 @@ public:
     class GlobIterator;
     class KeysIterator;
     class ArchiveIterator;
+    class SimpleCachedObjectListIterator;
 
     StorageObjectStorageSource(
         String name_,
@@ -156,6 +157,7 @@ public:
 
     ObjectInfoPtr next(size_t processor);
 
+
 protected:
     virtual ObjectInfoPtr nextImpl(size_t processor) = 0;
     LoggerPtr logger;
@@ -223,6 +225,10 @@ private:
     const ContextPtr local_context;
 
     std::function<void(FileProgress)> file_progress_callback;
+
+    bool save_glob_results = false;
+    bool copied_saved_glob_results = false;
+    ObjectInfos object_list;
 };
 
 class StorageObjectStorageSource::KeysIterator : public IIterator
@@ -332,4 +338,24 @@ private:
     std::mutex next_mutex;
 };
 
+class StorageObjectStorageSource::SimpleCachedObjectListIterator : public IIterator
+{
+public:
+    SimpleCachedObjectListIterator(
+        ObjectStoragePtr object_storage_,
+        ConfigurationPtr configuration_,
+        ObjectInfos & object_list_);
+
+    ~SimpleCachedObjectListIterator() override = default;
+
+    size_t estimatedKeysCount() override { return object_list.size(); }
+
+private:
+    ObjectInfoPtr nextImpl(size_t processor) override;
+
+    const ObjectStoragePtr object_storage;
+    const ConfigurationPtr configuration;
+    ObjectInfos object_list;
+    std::atomic<size_t> index = 0;
+};
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <Disks/ObjectStorages/IObjectStorage.h>
 #include <Common/threadPoolCallbackRunner.h>
 #include <Core/SchemaInferenceMode.h>
@@ -207,6 +208,10 @@ public:
     void setPartitionColumns(const DataLakePartitionColumns & columns) { partition_columns = columns; }
     const DataLakePartitionColumns & getPartitionColumns() const { return partition_columns; }
 
+    bool supportsGlobResultCaching(ContextPtr context) const;
+    std::optional<ObjectInfos> getValidCachedObjectList(ContextPtr context) const;
+    void setCachedObjectList(ObjectInfos & object_list);
+
     String format = "auto";
     String compression_method = "auto";
     String structure = "auto";
@@ -219,6 +224,8 @@ protected:
 
     bool initialized = false;
     DataLakePartitionColumns partition_columns;
+    ObjectInfos cached_object_list;
+    std::time_t last_refresh_time;
 };
 
 }
