@@ -889,6 +889,8 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreams(RangesInDataParts && parts_
 
         auto sorting_expr = storage_snapshot->metadata->getSortingKey().expression;
 
+        /// this code is important!
+
         SplitPartsWithRangesByPrimaryKeyResult split_ranges_result = splitPartsWithRangesByPrimaryKey(
             storage_snapshot->metadata->getPrimaryKey(),
             std::move(sorting_expr),
