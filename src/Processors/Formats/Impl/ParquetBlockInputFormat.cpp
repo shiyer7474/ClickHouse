@@ -525,7 +525,6 @@ ParquetBlockInputFormat::~ParquetBlockInputFormat()
         io_pool->wait();
 }
 
-std::mutex ParquetFileMetaDataCache::mutex;
 
 ParquetFileMetaDataCache::ParquetFileMetaDataCache(UInt64 max_cache_entries)
     : CacheBase(max_cache_entries) {}
@@ -533,23 +532,22 @@ ParquetFileMetaDataCache::ParquetFileMetaDataCache(UInt64 max_cache_entries)
 ParquetFileMetaDataCache *  ParquetFileMetaDataCache::instance(UInt64 max_cache_entries)
 {
     static ParquetFileMetaDataCache * instance = nullptr;
-    if (!instance)
-    {
-        std::lock_guard lock(mutex);
+    static std::once_flag once;
+    std::call_once(once, [&] {
         instance = new ParquetFileMetaDataCache(max_cache_entries);
-    }
+    });
     return instance;
 }
 
 std::shared_ptr<parquet::FileMetaData> ParquetBlockInputFormat::getFileMetaData()
 {
-    if (!use_metadata_cache || !metadata_cache_key.length())
+    if (!metadata_cache.use_cache || !metadata_cache.key.length())
         return parquet::ReadMetaData(arrow_file);
 
 
     /// auto [parquet_file_metadata, loaded] = parquet_metadata_cache.getOrSet(
-    auto [parquet_file_metadata, loaded] = ParquetFileMetaDataCache::instance(metadata_cache_max_entries)->getOrSet(
-        metadata_cache_key,
+    auto [parquet_file_metadata, loaded] = ParquetFileMetaDataCache::instance(metadata_cache.max_entries)->getOrSet(
+        metadata_cache.key,
         [this]()
         {
             return parquet::ReadMetaData(arrow_file);
@@ -1074,9 +1072,9 @@ const BlockMissingValues * ParquetBlockInputFormat::getMissingValues() const
 
 void ParquetBlockInputFormat::setStorageRelatedUniqueKey(const Settings & settings, const String & key_)
 {
-    metadata_cache_key = key_;
-    use_metadata_cache = settings[Setting::parquet_use_metadata_cache];
-    metadata_cache_max_entries = settings[Setting::parquet_metadata_cache_max_entries];
+    metadata_cache.key = key_;
+    metadata_cache.use_cache = settings[Setting::parquet_use_metadata_cache];
+    metadata_cache.max_entries = settings[Setting::parquet_metadata_cache_max_entries];
 }
 
 ParquetSchemaReader::ParquetSchemaReader(ReadBuffer & in_, const FormatSettings & format_settings_)
