@@ -367,6 +367,7 @@ BlockIO InterpreterCreateQuery::createDatabase(ASTCreateQuery & create)
     if (create.uuid != UUIDHelpers::Nil)
         create.setDatabase(TABLE_WITH_UUID_NAME_PLACEHOLDER);
 
+    /// TODO : unify with persistMetadata() in IDatabase
     if (need_write_metadata)
     {
         create.attach = true;

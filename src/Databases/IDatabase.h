@@ -416,6 +416,12 @@ public:
         std::lock_guard lock{mutex};
         return database_name;
     }
+
+    void persistMetadata(ContextPtr query_context)
+    {
+        persistMetadataImpl(query_context);
+    }
+
     /// Get UUID of database.
     virtual UUID getUUID() const { return UUIDHelpers::Nil; }
 
@@ -486,6 +492,8 @@ protected:
             throw Exception(ErrorCodes::CANNOT_GET_CREATE_TABLE_QUERY, "There is no SHOW CREATE TABLE query for Database{}", getEngineName());
         return nullptr;
     }
+
+    virtual void persistMetadataImpl(ContextPtr context);
 
     mutable std::mutex mutex;
     String database_name TSA_GUARDED_BY(mutex);

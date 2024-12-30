@@ -255,6 +255,9 @@ BlockIO InterpreterAlterQuery::executeToDatabase(const ASTAlterQuery & alter)
 {
     BlockIO res;
     getContext()->checkAccess(getRequiredAccess());
+
+    /// Protects from concurrent ALTER queries
+    auto db_guard = DatabaseCatalog::instance().getExclusiveDDLGuardForDatabase(alter.getDatabase());
     DatabasePtr database = DatabaseCatalog::instance().getDatabase(alter.getDatabase());
     AlterCommands alter_commands;
 
@@ -272,7 +275,7 @@ BlockIO InterpreterAlterQuery::executeToDatabase(const ASTAlterQuery & alter)
         /// Only ALTER SETTING is supported.
         for (const auto & command : alter_commands)
         {
-            if (command.type != AlterCommand::MODIFY_DATABASE_SETTING)
+            if (command.type != AlterCommand::MODIFY_DATABASE_SETTING && command.type != AlterCommand::MODIFY_DATABASE_COMMENT)
                 throw Exception(ErrorCodes::NOT_IMPLEMENTED, "Unsupported alter type for database engines");
         }
 
@@ -282,6 +285,11 @@ BlockIO InterpreterAlterQuery::executeToDatabase(const ASTAlterQuery & alter)
             {
                 if (command.type == AlterCommand::MODIFY_DATABASE_SETTING)
                     database->applySettingsChanges(command.settings_changes, getContext());
+                else if (command.type == AlterCommand::MODIFY_DATABASE_COMMENT)
+                {
+                    database->setDatabaseComment(command.comment.value());
+                    database->persistMetadata(getContext());
+                }
                 else
                     throw Exception(ErrorCodes::NOT_IMPLEMENTED, "Unsupported alter command");
             }
@@ -520,6 +528,7 @@ AccessRightsElements InterpreterAlterQuery::getRequiredAccessForCommand(const AS
         }
         case ASTAlterCommand::NO_TYPE: break;
         case ASTAlterCommand::MODIFY_COMMENT:
+        case ASTAlterCommand::MODIFY_DATABASE_COMMENT:
         {
             required_access.emplace_back(AccessType::ALTER_MODIFY_COMMENT, database, table);
             break;

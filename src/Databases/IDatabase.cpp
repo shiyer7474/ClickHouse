@@ -6,7 +6,14 @@
 #include <Storages/IStorage.h>
 #include <Common/CurrentMetrics.h>
 #include <Common/NamePrompter.h>
+#include <Interpreters/Context.h>
 #include <Common/quoteString.h>
+#include <Common/escapeForFileName.h>
+#include <Common/filesystemHelpers.h>
+#include <Core/Settings.h>
+#include <Parsers/formatAST.h>
+#include <IO/WriteBufferFromFile.h>
+#include <IO/WriteHelpers.h>
 
 
 namespace CurrentMetrics
@@ -16,6 +23,11 @@ namespace CurrentMetrics
 
 namespace DB
 {
+
+namespace Setting
+{
+    extern const SettingsBool fsync_metadata;
+}
 
 namespace ErrorCodes
 {
@@ -71,4 +83,32 @@ void IDatabase::createTableRestoredFromBackup(const ASTPtr & create_table_query,
                     backQuoteIfNeed(create_table_query->as<const ASTCreateQuery &>().getTable()));
 }
 
+void IDatabase::persistMetadataImpl(ContextPtr query_context)
+{
+    auto create_query = getCreateDatabaseQuery()->clone();
+    auto * create = create_query->as<ASTCreateQuery>();
+
+    create->attach = true;
+    create->if_not_exists = false;
+
+    WriteBufferFromOwnString statement_buf;
+    formatAST(*create, statement_buf, false);
+    writeChar('\n', statement_buf);
+    String statement = statement_buf.str();
+
+    String database_name_escaped = escapeForFileName(TSA_SUPPRESS_WARNING_FOR_READ(database_name));   /// FIXME
+    fs::path metadata_root_path = fs::canonical(query_context->getGlobalContext()->getPath());
+    fs::path metadata_file_tmp_path = fs::path(metadata_root_path) / "metadata" / (database_name_escaped + ".sql.tmp");
+    fs::path metadata_file_path = fs::path(metadata_root_path) / "metadata" / (database_name_escaped + ".sql");
+
+    WriteBufferFromFile out(metadata_file_tmp_path, statement.size(), O_WRONLY | O_CREAT | O_EXCL);
+    writeString(statement, out);
+
+    out.next();
+    if (query_context->getSettingsRef()[Setting::fsync_metadata])
+        out.sync();
+    out.close();
+
+    fs::rename(metadata_file_tmp_path, metadata_file_path);
+}
 }
